@@ -1,0 +1,4 @@
+../Core/Src/touch.c:6:13:ILI9341_TouchSelect	1
+../Core/Src/touch.c:10:6:ILI9341_TouchUnselect	1
+../Core/Src/touch.c:14:6:ILI9341_TouchPressed	1
+../Core/Src/touch.c:18:6:ILI9341_TouchGetCoordinates	8

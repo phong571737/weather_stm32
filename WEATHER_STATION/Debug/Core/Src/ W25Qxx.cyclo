@@ -1,0 +1,9 @@
+../Core/Src/ W25Qxx.c:6:6:W25Q_Delay	1
+../Core/Src/ W25Qxx.c:10:6:csLOW	1
+../Core/Src/ W25Qxx.c:15:6:csHIGH	1
+../Core/Src/ W25Qxx.c:20:6:SPI_Write	1
+../Core/Src/ W25Qxx.c:25:6:SPI_Read	1
+../Core/Src/ W25Qxx.c:30:6:W25Q_Reset	1
+../Core/Src/ W25Qxx.c:42:10:W25QReadID	1
+../Core/Src/ W25Qxx.c:52:6:W25Q_WriteData	1
+../Core/Src/ W25Qxx.c:65:6:W25Q_ReadData	1
