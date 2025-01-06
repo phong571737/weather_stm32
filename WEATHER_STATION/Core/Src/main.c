@@ -50,19 +50,28 @@
 struct DataSend{
 	float lat;
 	float lon;
+	int nameProvince;
+	int flagSend;
 };
 
 struct DataReceive{
+	int tempCurrent[7][24];
 	int numberDay[7];
 	int tempMax[7];
 	int tempMin[7];
-	int humidi[7];
+	int humidi[7][24];
+	double Rain[7][24];
+	int gioHT;
+	int receiveNumber;
+	int flagReceive;
 };
 struct DataReceive data_receive;
 
-struct DataSend HoChiMinh = {10.8231,106.6297};
-struct DataSend Hue = {16.4637,107.5909};
-struct DataSend HaNoi = {21.0278,105.8342 };
+
+struct DataSend HoChiMinh = {10.8231,106.6297,1};
+struct DataSend Hue = {16.4637,107.5909,2};
+struct DataSend HaNoi = {21.0278,105.8342,3};
+
 
 /* USER CODE END PD */
 
@@ -116,14 +125,14 @@ uint8_t rx_data;
 char rx_buffer[1024];
 char rx_letter[1024];
 char rx_Day[1024];
+char rx_buff[1024];
 int i = 0;
 float temperatures[8];     // Lưu nhiệt độ 8 ngày
 int valuesIndex = 0;
-// Mảng chứa các chuỗi đã tách
-char *tokens[8];
 uint8_t values[MAX_TOKENS];        // Mảng lưu giá trị float từ các token
 int state = 0; // 0: màn hình chính, 1: Hue, 2: Ho Chi Minh, 3: Nhiet do va do am
 int isTitleDisplayed = 0; // Cờ để kiểm tra nếu Title đã hiển thị
+int canReceive = 0;
 
 void microDelay(uint16_t t)
 {
@@ -192,7 +201,9 @@ uint8_t DHT11_Read()
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	HAL_UART_Receive_IT(&huart1,(uint8_t *)&data_receive, sizeof(data_receive));
+	if(data_receive.flagReceive == 1){
+		HAL_UART_Receive_IT(&huart1,(uint8_t *)&data_receive, sizeof(data_receive));
+	}
 }
 
 void Title(){ // display main screen
@@ -214,137 +225,261 @@ void DisplayWeather(){
 	uint16_t x, y;
 	if(ILI9341_TouchGetCoordinates(&x, &y) && state == 0)
 	{
-		//sprintf(rx_buffer, "%u %u ", x, y);
-		//ILI9341_WriteString(0, 0, rx_buffer, Font_11x18, WHITE, BLACK);
 		if(x >= 188 && x <= 196 && y >= 9 && y <= 318)
 		{
+			Hue.flagSend = 1;
 			HAL_UART_Transmit(&huart1, (uint8_t *)&Hue, sizeof(Hue),1000);
+			Hue.flagSend = 0;
+			HAL_UART_Transmit(&huart1, (uint8_t *)&Hue, sizeof(HaNoi),1000);
+			while(data_receive.receiveNumber != 2 || data_receive.receiveNumber == 1 || data_receive.receiveNumber == 3){
+				Hue.flagSend = 1;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&Hue, sizeof(Hue),1000);
+				Hue.flagSend = 0;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&Hue, sizeof(HaNoi),1000);
+				ILI9341_FillScreen(ILI9341_COLOR565(0, 204, 204));
+				ILI9341_WriteString(40, 147, "Loading...", Font_16x26, ILI9341_COLOR565(102, 51, 255),ILI9341_COLOR565(0, 204, 204));
+			}
 			ILI9341_FillScreen(BLACK);
 			ILI9341_WriteString(103, 1, "Hue", Font_11x18, ILI9341_COLOR565(255, 51, 0), BLACK);
 			ILI9341_DrawImage(206, 1, 24, 24, button_back_Image);
+
+			ILI9341_FillRectangle(38, 80, 22, 22, ILI9341_COLOR565(64, 160, 240));
+			sprintf(rx_letter, "%s","<");
+			ILI9341_WriteString(43, 82, rx_letter, Font_11x18, WHITE, ILI9341_COLOR565(64, 160, 240));
+			ILI9341_FillRectangle(187, 80, 22, 22, ILI9341_COLOR565(64, 160, 240));
+			sprintf(rx_letter, "%s",">");
+			ILI9341_WriteString(194, 82, rx_letter, Font_11x18, WHITE, ILI9341_COLOR565(64, 160, 240));
+
+			int count = data_receive.gioHT + 1;
+
+			int n = data_receive.gioHT;
+			int timeCurrent;
+
 			while(state != 1){
+				Hue.flagSend = 1;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&Hue, sizeof(Hue),1000);
+				Hue.flagSend = 0;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&Hue, sizeof(HaNoi),1000);
 				for(int t = 0;t < 7;t++){
 					int currentDay = (data_receive.numberDay[t] + i) % 7;
 						if(t == 0){
 							sprintf(rx_Day, "%s",day_char[currentDay]);
 							ILI9341_WriteString(5, 30, rx_Day, Font_11x18, WHITE, BLACK);
 
-							sprintf(rx_buffer, "%d",data_receive.tempMax[t]);
-							ILI9341_WriteString(50, 30, rx_buffer, Font_11x18, WHITE, BLACK);
+							sprintf(rx_buffer, "%d",data_receive.tempCurrent[t][n]);
+							ILI9341_WriteString(60, 30, rx_buffer, Font_11x18, WHITE, BLACK);
 							sprintf(rx_letter, "%s","o");
-							ILI9341_WriteString(73, 30, rx_letter, Font_7x10, WHITE, BLACK);
+							ILI9341_WriteString(83, 30, rx_letter, Font_7x10, WHITE, BLACK);
 
-							sprintf(rx_buffer, "/%d",data_receive.tempMin[t]);
-							ILI9341_WriteString(80, 30, rx_buffer, Font_11x18, WHITE, BLACK);
-							sprintf(rx_letter, "%s","o");
-							ILI9341_WriteString(113, 30, rx_letter, Font_7x10, WHITE, BLACK);
-
-							sprintf(rx_buffer, "%d%%",data_receive.humidi[t]);
-							ILI9341_WriteString(50, 55, rx_buffer, Font_11x18, WHITE, BLACK);
-							if(data_receive.tempMax[t] >= 25){
+							sprintf(rx_buffer, "%d%%",data_receive.humidi[t][n]);
+							ILI9341_WriteString(60, 55, rx_buffer, Font_11x18, WHITE, BLACK);
+							if(data_receive.Rain[t][n] == 0){
 								ILI9341_DrawImage(134, 30, 32, 32, Image_Sun);
 							}
 							else{
 								ILI9341_DrawImage(134, 30, 32, 32, Image_Rain);
 							}
+
+							// next current hour
+							if(count > 12)
+							{
+								ILI9341_FillRectangle(80, 82, 44, 18,BLACK);
+								timeCurrent = count - 12;
+								sprintf(rx_buffer, "%dPM", timeCurrent);
+								ILI9341_WriteString(80, 82, rx_buffer, Font_11x18, ILI9341_COLOR565(248, 248, 255), BLACK);
+							}
+							else{
+								sprintf(rx_buffer, "%dAM", count);
+								ILI9341_WriteString(80, 82, rx_buffer, Font_11x18, ILI9341_COLOR565(248, 248, 255), BLACK);
+							}
+							sprintf(rx_buffer, "%d", data_receive.tempCurrent[t][count]);
+							ILI9341_WriteString(135, 82, rx_buffer, Font_7x10, WHITE, BLACK);
+							sprintf(rx_letter, "%s", "o");
+							ILI9341_WriteString(150, 79, rx_letter, Font_7x10, WHITE, BLACK);
+
+							sprintf(rx_buffer, "%d%%", data_receive.humidi[t][count]);
+							ILI9341_WriteString(135, 93, rx_buffer, Font_7x10, WHITE, BLACK);
 						}
 						else{
 							sprintf(rx_Day, "%s",day_char[currentDay]);
-							ILI9341_WriteString(5,35*t + 70 , rx_Day, Font_7x10, WHITE, BLACK);
+							ILI9341_WriteString(20,30*t + 97 , rx_Day, Font_7x10, WHITE, BLACK);
 
 
 							sprintf(rx_buffer, "%d",data_receive.tempMax[t]);
-							ILI9341_WriteString(60, 35*t + 70, rx_buffer, Font_7x10, WHITE, BLACK);
+							ILI9341_WriteString(75, 30*t + 97, rx_buffer, Font_7x10, WHITE, BLACK);
 							sprintf(rx_letter, "%s","o");
-							ILI9341_WriteString(75, 35*t + 66, rx_letter, Font_7x10, WHITE, BLACK);
+							ILI9341_WriteString(90, 30*t + 93, rx_letter, Font_7x10, WHITE, BLACK);
 
 							sprintf(rx_buffer, "%d",data_receive.tempMin[t]);
-							ILI9341_WriteString(90, 35*t + 70, rx_buffer, Font_7x10, WHITE, BLACK);
+							ILI9341_WriteString(105, 30*t + 97, rx_buffer, Font_7x10, WHITE, BLACK);
 							sprintf(rx_letter, "%s","o");
-							ILI9341_WriteString(105, 35*t + 66, rx_letter, Font_7x10, WHITE, BLACK);
+							ILI9341_WriteString(120, 30*t + 93, rx_letter, Font_7x10, WHITE, BLACK);
 
-							sprintf(rx_buffer, "%d%%",data_receive.humidi[t]);
-							ILI9341_WriteString(164, 35*t + 70, rx_buffer, Font_7x10, WHITE, BLACK);
-							if(data_receive.tempMax[t] >= 25){
-								ILI9341_DrawImage(40, 35*t + 65, 16, 16, Image_Sun_16);
+							sprintf(rx_buffer, "%d%%",data_receive.humidi[t][n]);
+							ILI9341_WriteString(179, 30*t + 97, rx_buffer, Font_7x10, WHITE, BLACK);
+							if(data_receive.Rain[t][n] == 0){
+								ILI9341_DrawImage(55, 30*t + 92, 16, 16, Image_Sun_16);
 							}
 							else{
-								ILI9341_DrawImage(40, 35*t + 65, 16, 16, Image_rain_16);
+								ILI9341_DrawImage(55, 30*t + 92, 16, 16, Image_rain_16);
 							}
-							ILI9341_DrawImage(140, 35*t + 65, 16, 16, Image_humidity_16);
+							ILI9341_DrawImage(155, 30*t + 92, 16, 16, Image_humidity_16);
 						}
+					}
+				HAL_Delay(2000);
 
-				}
 				if (ILI9341_TouchGetCoordinates(&x, &y)) {
 					if(x >= 4 && x <= 20 && y >= 284 && y <= 320){
 						state = 1;
+						 /*// Đợi cho đến khi UART truyền xong
+						while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
+						     // Chờ UART truyền xong
+						__HAL_UART_FLUSH_DRREGISTER(&huart1); // Xóa thanh ghi dữ liệu UART
+						Hue.flagSend = 0;
+						HAL_UART_Transmit(&huart1, (uint8_t *)&Hue, sizeof(HaNoi),1000);*/
+						return;
+						}
+					//next
+					else if (x >= 64 && x <= 83 && y >= 269 && y <= 318) {
+						if (count + 1 <= 24) {
+							count++;
+						}
+					}
+					// back
+					else if (x >= 64 && x <= 80 && y >= 49 && y <= 68) {
+						if (count - 1 > n) {
+							count--;
+						}
 					}
 				}
 			}
-
 		}
+
 		else if((x >= 77 && x <= 99) && (y >= 9 && y <= 318))
 		{
+			HoChiMinh.flagSend = 1;
 			HAL_UART_Transmit(&huart1, (uint8_t *)&HoChiMinh, sizeof(HoChiMinh),1000);
-			ILI9341_FillScreen(BLACK);
-			ILI9341_WriteString(50, 1, "Ho Chi Minh", Font_11x18, ILI9341_COLOR565(255, 51, 0), BLACK);
-			ILI9341_DrawImage(206, 1, 24, 24, button_back_Image);
+			HoChiMinh.flagSend = 0;
+			HAL_UART_Transmit(&huart1, (uint8_t *)&HoChiMinh, sizeof(HoChiMinh),1000);
+			while(data_receive.receiveNumber != 1 || data_receive.receiveNumber == 2 || data_receive.receiveNumber == 3){
+				HoChiMinh.flagSend = 1;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&HoChiMinh, sizeof(HoChiMinh),1000);
+				HoChiMinh.flagSend = 0;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&HoChiMinh, sizeof(HoChiMinh),1000);
+				ILI9341_FillScreen(ILI9341_COLOR565(0, 204, 204));
+				ILI9341_WriteString(40, 147, "Loading...", Font_16x26, ILI9341_COLOR565(102, 51, 255),ILI9341_COLOR565(0, 204, 204) );
+			}
+				ILI9341_FillScreen(BLACK);
+				ILI9341_WriteString(50, 1, "Ho Chi Minh", Font_11x18, ILI9341_COLOR565(255, 51, 0), BLACK);
+				ILI9341_DrawImage(206, 1, 24, 24, button_back_Image);
+
+				ILI9341_FillRectangle(38, 80, 22, 22, ILI9341_COLOR565(64, 160, 240));
+				sprintf(rx_letter, "%s","<");
+				ILI9341_WriteString(43, 82, rx_letter, Font_11x18, WHITE, ILI9341_COLOR565(64, 160, 240));
+				ILI9341_FillRectangle(187, 80, 22, 22, ILI9341_COLOR565(64, 160, 240));
+				sprintf(rx_letter, "%s",">");
+				ILI9341_WriteString(194, 82, rx_letter, Font_11x18, WHITE, ILI9341_COLOR565(64, 160, 240));
+
+				int count = data_receive.gioHT + 1;
+				int timeCurrent;
+				int n = data_receive.gioHT;
+
 			while(state != 2){
+				HoChiMinh.flagSend = 1;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&HoChiMinh, sizeof(HoChiMinh),1000);
+				HoChiMinh.flagSend = 0;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&HoChiMinh, sizeof(HoChiMinh),1000);
+
 				for(int t = 0;t < 7;t++){
 					int currentDay = (data_receive.numberDay[t] + i) % 7;
 					if(t == 0){
 						sprintf(rx_Day, "%s",day_char[currentDay]);
 						ILI9341_WriteString(5, 30, rx_Day, Font_11x18, WHITE, BLACK);
 
-						sprintf(rx_buffer, "%d",data_receive.tempMax[t]);
-						ILI9341_WriteString(50, 30, rx_buffer, Font_11x18, WHITE, BLACK);
+						sprintf(rx_buffer, "%d",data_receive.tempCurrent[t][n]);
+						ILI9341_WriteString(60, 30, rx_buffer, Font_11x18, WHITE, BLACK);
 						sprintf(rx_letter, "%s","o");
-						ILI9341_WriteString(73, 30, rx_letter, Font_7x10, WHITE, BLACK);
+						ILI9341_WriteString(83, 30, rx_letter, Font_7x10, WHITE, BLACK);
 
-						sprintf(rx_buffer, "/%d",data_receive.tempMin[t]);
-						ILI9341_WriteString(80, 30, rx_buffer, Font_11x18, WHITE, BLACK);
-						sprintf(rx_letter, "%s","o");
-						ILI9341_WriteString(113, 30, rx_letter, Font_7x10, WHITE, BLACK);
-
-						sprintf(rx_buffer, "%d%%",data_receive.humidi[t]);
-						ILI9341_WriteString(50, 50, rx_buffer, Font_11x18, WHITE, BLACK);
-						if(data_receive.tempMax[t] >= 25){
+						sprintf(rx_buffer, "%d%%",data_receive.humidi[t][n]);
+						ILI9341_WriteString(60, 50, rx_buffer, Font_11x18, WHITE, BLACK);
+						if(data_receive.Rain[t][n] == 0){
 							ILI9341_DrawImage(134, 30, 32, 32, Image_Sun);
 						}
 						else{
 							ILI9341_DrawImage(134, 30, 32, 32, Image_Rain);
 						}
-					}
-					else{
-						sprintf(rx_Day, "%s",day_char[currentDay]);
-						ILI9341_WriteString(5,35*t + 70 , rx_Day, Font_7x10, WHITE, BLACK);
 
-						sprintf(rx_buffer, "%d",data_receive.tempMax[t]);
-						ILI9341_WriteString(60, 35*t + 70, rx_buffer, Font_7x10, WHITE, BLACK);
-						sprintf(rx_letter, "%s","o");
-						ILI9341_WriteString(75, 35*t + 66, rx_letter, Font_7x10, WHITE, BLACK);
-
-						sprintf(rx_buffer, "%d",data_receive.tempMin[t]);
-						ILI9341_WriteString(90, 35*t + 70, rx_buffer, Font_7x10, WHITE, BLACK);
-						sprintf(rx_letter, "%s","o");
-						ILI9341_WriteString(105, 35*t + 66, rx_letter, Font_7x10, WHITE, BLACK);
-
-						sprintf(rx_buffer, "%d%%",data_receive.humidi[t]);
-						ILI9341_WriteString(164, 35*t + 70, rx_buffer, Font_7x10, WHITE, BLACK);
-						if(data_receive.tempMax[t] >= 25){
-							ILI9341_DrawImage(40, 35*t + 65, 16, 16, Image_Sun_16);
+						// next current hour
+						if(count > 12)
+						{
+							ILI9341_FillRectangle(80, 82, 44, 18,BLACK);
+							timeCurrent = count - 12;
+							sprintf(rx_buffer, "%dPM", timeCurrent);
+							ILI9341_WriteString(80, 82, rx_buffer, Font_11x18, ILI9341_COLOR565(248, 248, 255), BLACK);
 						}
 						else{
-							ILI9341_DrawImage(40, 35*t + 65, 16, 16, Image_rain_16);
+							sprintf(rx_buffer, "%dAM", count);
+							ILI9341_WriteString(80, 82, rx_buffer, Font_11x18, ILI9341_COLOR565(248, 248, 255), BLACK);
 						}
-						ILI9341_DrawImage(140, 35*t + 65, 16, 16, Image_humidity_16);
+						sprintf(rx_buffer, "%d", data_receive.tempCurrent[t][count]);
+						ILI9341_WriteString(135, 82, rx_buffer, Font_7x10, WHITE, BLACK);
+						sprintf(rx_letter, "%s", "o");
+						ILI9341_WriteString(150, 79, rx_letter, Font_7x10, WHITE, BLACK);
+
+						sprintf(rx_buffer, "%d%%", data_receive.humidi[t][count]);
+						ILI9341_WriteString(135, 93, rx_buffer, Font_7x10, WHITE, BLACK);
+
+					}
+
+					else{
+						sprintf(rx_Day, "%s",day_char[currentDay]);
+						ILI9341_WriteString(20,30*t + 97 , rx_Day, Font_7x10, WHITE, BLACK);
+
+						sprintf(rx_buffer, "%d",data_receive.tempMax[t]);
+						ILI9341_WriteString(75, 30*t + 97, rx_buffer, Font_7x10, WHITE, BLACK);
+						sprintf(rx_letter, "%s","o");
+						ILI9341_WriteString(90, 30*t + 93, rx_letter, Font_7x10, WHITE, BLACK);
+
+						sprintf(rx_buffer, "%d",data_receive.tempMin[t]);
+						ILI9341_WriteString(105, 30*t + 97, rx_buffer, Font_7x10, WHITE, BLACK);
+						sprintf(rx_letter, "%s","o");
+						ILI9341_WriteString(120, 30*t + 93, rx_letter, Font_7x10, WHITE, BLACK);
+
+						sprintf(rx_buffer, "%d%%",data_receive.humidi[t][n]);
+						ILI9341_WriteString(179, 30*t + 97, rx_buffer, Font_7x10, WHITE, BLACK);
+						if(data_receive.Rain[t][n] == 0){
+							ILI9341_DrawImage(55, 30*t + 92, 16, 16, Image_Sun_16);
+						}
+						else{
+							ILI9341_DrawImage(55, 30*t + 92, 16, 16, Image_rain_16);
+						}
+						ILI9341_DrawImage(155, 30*t + 92, 16, 16, Image_humidity_16);
 					}
 				}
-				//HAL_Delay(200);
+				HAL_Delay(2000);
 				if (ILI9341_TouchGetCoordinates(&x, &y)) {
 					if(x >= 4 && x <= 20 && y >= 284 && y <= 320){
 						state = 2;
+						 /*// Đợi cho đến khi UART truyền xong
+						while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
+							// Chờ UART truyền xong
+						__HAL_UART_FLUSH_DRREGISTER(&huart1); // Xóa thanh ghi dữ liệu UART
+						HoChiMinh.flagSend = 0;
+						HAL_UART_Transmit(&huart1, (uint8_t *)&HoChiMinh, sizeof(HoChiMinh),1000);*/
 						return;
+						 }
+					//next
+					else if (x >= 64 && x <= 83 && y >= 269 && y <= 318) {
+						if (count + 1 <= 24) {
+							count++;
+						}
+					}
+					// back
+					else if (x >= 64 && x <= 80 && y >= 49 && y <= 68) {
+						if (count - 1 > n) {
+							count --;
+						}
 					}
 				}
 			}
@@ -352,64 +487,132 @@ void DisplayWeather(){
 
 		else if((x >= 116 && x <= 185) && (y >= 9 && y <= 318))
 		{
+			HaNoi.flagSend = 1;
 			HAL_UART_Transmit(&huart1, (uint8_t *)&HaNoi, sizeof(HaNoi),1000);
+			HaNoi.flagSend = 0;
+			HAL_UART_Transmit(&huart1, (uint8_t *)&HaNoi, sizeof(HaNoi),1000);
+			while(data_receive.receiveNumber != 3 || data_receive.receiveNumber == 2 || data_receive.receiveNumber == 1){
+				HaNoi.flagSend = 1;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&HaNoi, sizeof(HaNoi),1000);
+				HaNoi.flagSend = 0;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&HaNoi, sizeof(HaNoi),1000);
+				ILI9341_FillScreen(ILI9341_COLOR565(0, 204, 204));
+				ILI9341_WriteString(40, 147, "Loading...", Font_16x26, ILI9341_COLOR565(102, 51, 255),ILI9341_COLOR565(0, 204, 204) );
+			}
 			ILI9341_FillScreen(BLACK);
 			ILI9341_WriteString(87, 1, "Ha Noi", Font_11x18, ILI9341_COLOR565(255, 51, 0), BLACK);
 			ILI9341_DrawImage(206, 1, 24, 24, button_back_Image);
-			while(state != 2){
+
+			ILI9341_FillRectangle(38, 80, 22, 22, ILI9341_COLOR565(64, 160, 240));
+			sprintf(rx_letter, "%s","<");
+			ILI9341_WriteString(43, 82, rx_letter, Font_11x18, WHITE, ILI9341_COLOR565(64, 160, 240));
+			ILI9341_FillRectangle(187, 80, 22, 22, ILI9341_COLOR565(64, 160, 240));
+			sprintf(rx_letter, "%s",">");
+			ILI9341_WriteString(194, 82, rx_letter, Font_11x18, WHITE, ILI9341_COLOR565(64, 160, 240));
+
+			int count = data_receive.gioHT + 1;
+			int timeCurrent;
+			int n = data_receive.gioHT;
+
+			while(state != 3){
+				HaNoi.flagSend = 1;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&HaNoi, sizeof(HaNoi),1000);
+				HaNoi.flagSend = 0;
+				HAL_UART_Transmit(&huart1, (uint8_t *)&HaNoi, sizeof(HaNoi),1000);
 				for(int t = 0;t < 7;t++){
 					int currentDay = (data_receive.numberDay[t] + i) % 7;
+					int n = data_receive.gioHT;
 					if(t == 0){
 						sprintf(rx_Day, "%s",day_char[currentDay]);
 						ILI9341_WriteString(5, 30, rx_Day, Font_11x18, WHITE, BLACK);
-						sprintf(rx_buffer, "%d",data_receive.tempMax[t]);
-						ILI9341_WriteString(50, 30, rx_buffer, Font_11x18, WHITE, BLACK);
+						sprintf(rx_buffer, "%d",data_receive.tempCurrent[t][n]);
+						ILI9341_WriteString(60, 30, rx_buffer, Font_11x18, WHITE, BLACK);
 						sprintf(rx_letter, "%s","o");
-						ILI9341_WriteString(73, 30, rx_letter, Font_7x10, WHITE, BLACK);
+						ILI9341_WriteString(83, 30, rx_letter, Font_7x10, WHITE, BLACK);
 
-						sprintf(rx_buffer, "/%d",data_receive.tempMin[t]);
-						ILI9341_WriteString(80, 30, rx_buffer, Font_11x18, WHITE, BLACK);
-						sprintf(rx_letter, "%s","o");
-						ILI9341_WriteString(113, 30, rx_letter, Font_7x10, WHITE, BLACK);
-
-						sprintf(rx_buffer, "%d%%",data_receive.humidi[t]);
-						ILI9341_WriteString(50, 50, rx_buffer, Font_11x18, WHITE, BLACK);
-						if(data_receive.tempMax[t] >= 25){
+						sprintf(rx_buffer, "%d%%",data_receive.humidi[t][n]);
+						ILI9341_WriteString(60, 50, rx_buffer, Font_11x18, WHITE, BLACK);
+						if(data_receive.Rain[t][n] == 0){
 							ILI9341_DrawImage(134, 30, 32, 32, Image_Sun);
 							}
 						else{
 							ILI9341_DrawImage(134, 30, 32, 32, Image_Rain);
 						}
+
+						// next current hour
+						if(count > 12)
+						{
+							ILI9341_FillRectangle(80, 82, 44, 18,BLACK);
+							timeCurrent = count - 12;
+							sprintf(rx_buffer, "%dPM", timeCurrent);
+							ILI9341_WriteString(80, 82, rx_buffer, Font_11x18, ILI9341_COLOR565(248, 248, 255), BLACK);
+						}
+						else{
+							sprintf(rx_buffer, "%dAM", count);
+							ILI9341_WriteString(80, 82, rx_buffer, Font_11x18, ILI9341_COLOR565(248, 248, 255), BLACK);
+						}
+						sprintf(rx_buffer, "%d", data_receive.tempCurrent[t][count]);
+						ILI9341_WriteString(135, 82, rx_buffer, Font_7x10, WHITE, BLACK);
+						sprintf(rx_letter, "%s", "o");
+						ILI9341_WriteString(150, 79, rx_letter, Font_7x10, WHITE, BLACK);
+
+						sprintf(rx_buffer, "%d%%", data_receive.humidi[t][count]);
+						ILI9341_WriteString(135, 93, rx_buffer, Font_7x10, WHITE, BLACK);
+
 					}
 					else{
 						sprintf(rx_Day, "%s",day_char[currentDay]);
-						ILI9341_WriteString(5,35*t + 70 , rx_Day, Font_7x10, WHITE, BLACK);
+						ILI9341_WriteString(20,30*t + 97 , rx_Day, Font_7x10, WHITE, BLACK);
 						sprintf(rx_buffer, "%d",data_receive.tempMax[t]);
-						ILI9341_WriteString(60, 35*t + 70, rx_buffer, Font_7x10, WHITE, BLACK);
+						ILI9341_WriteString(75, 30*t + 97, rx_buffer, Font_7x10, WHITE, BLACK);
 						sprintf(rx_letter, "%s","o");
-						ILI9341_WriteString(75, 35*t + 66, rx_letter, Font_7x10, WHITE, BLACK);
+						ILI9341_WriteString(90, 30*t + 93, rx_letter, Font_7x10, WHITE, BLACK);
 
 						sprintf(rx_buffer, "%d",data_receive.tempMin[t]);
-						ILI9341_WriteString(90, 35*t + 70, rx_buffer, Font_7x10, WHITE, BLACK);
+						ILI9341_WriteString(105, 30*t + 97, rx_buffer, Font_7x10, WHITE, BLACK);
 						sprintf(rx_letter, "%s","o");
-						ILI9341_WriteString(105, 35*t + 66, rx_letter, Font_7x10, WHITE, BLACK);
+						ILI9341_WriteString(120, 30*t + 93, rx_letter, Font_7x10, WHITE, BLACK);
 
-						sprintf(rx_buffer, "%d%%",data_receive.humidi[t]);
-						ILI9341_WriteString(164, 35*t + 70, rx_buffer, Font_7x10, WHITE, BLACK);
-						if(data_receive.tempMax[t] >= 25){
-							ILI9341_DrawImage(40, 35*t + 65, 16, 16, Image_Sun_16);
+						sprintf(rx_buffer, "%d%%",data_receive.humidi[t][n]);
+						ILI9341_WriteString(179, 30*t + 97, rx_buffer, Font_7x10, WHITE, BLACK);
+						if(data_receive.Rain[t][n] == 0){
+							ILI9341_DrawImage(55, 30*t + 92, 16, 16, Image_Sun_16);
 						}
 						else{
-							ILI9341_DrawImage(40, 35*t + 65, 16, 16, Image_rain_16);
+							ILI9341_DrawImage(55, 30*t + 92, 16, 16, Image_rain_16);
 						}
-						ILI9341_DrawImage(140, 35*t + 65, 16, 16, Image_humidity_16);
+						ILI9341_DrawImage(155, 30*t + 92, 16, 16, Image_humidity_16);
 						}
 					}
-					//HAL_Delay(200);
+					HAL_Delay(2000);
 					if (ILI9341_TouchGetCoordinates(&x, &y)) {
 						if(x >= 4 && x <= 20 && y >= 284 && y <= 320){
-							state = 2;
+							state = 3;
+							 // Đợi cho đến khi UART truyền xong
+							/*while (HAL_UART_GetState(&huart1) != HAL_UART_STATE_READY) {
+							    // Chờ UART truyền xong
+
+							//HAL_UART_Abort(&huart1);
+							__HAL_UART_FLUSH_DRREGISTER(&huart1); // Xóa thanh ghi dữ liệu UART
+							HaNoi.flagSend = 0;
+							//RCC->APB2RSTR |= RCC_APB2RSTR_USART1RST; // Reset UART
+							//MX_USART1_UART_Init();
+							//RCC->APB2RSTR &= ~RCC_APB2RSTR_USART1RST;
+							HAL_UART_Transmit(&huart1, (uint8_t *)&HaNoi, sizeof(HaNoi),1000);
+							*/
 							return;
+						}
+						//next
+						else if (x >= 64 && x <= 83 && y >= 269 && y <= 318) {
+							if (count + 1 <= 24) {
+								count++;
+							}
+						}
+						// back
+						else if (x >= 64 && x <= 80 && y >= 49 && y <= 68) {
+							if (count - 1 > n) {
+								count --;
+							}
 						}
 					}
 				}
@@ -422,7 +625,7 @@ void DisplayWeather(){
 			ILI9341_DrawImage(46, 129, 32, 32, Image_Temp);
 			ILI9341_WriteString(56, 175, "Humidity", Font_16x26, WHITE, BLACK);
 			ILI9341_DrawImage(46, 211, 32, 32, Image_Humidity);
-			while(state != 3){
+			while(state != 4){
 				if(DHT11_Start()){
 					RHI = DHT11_Read();
 					RHD = DHT11_Read();
@@ -451,7 +654,7 @@ void DisplayWeather(){
 				}
 				if (ILI9341_TouchGetCoordinates(&x, &y)) {
 					if(x >= 4 && x <= 20 && y >= 284 && y <= 320){
-						state = 3;
+						state = 4;
 						return;
 					}
 				}
@@ -463,10 +666,11 @@ void DisplayWeather(){
 void ReturnBack(){
 	uint16_t x, y;
 	if(ILI9341_TouchGetCoordinates(&x, &y)){
-		if((x >= 4 && x <= 20 && y >= 284 && y <= 320) && (state == 1 || state == 2 || state == 3)){
+		if((x >= 4 && x <= 20 && y >= 284 && y <= 320) && (state == 1 || state == 2 || state == 3 || state == 4)){
 			ILI9341_FillScreen(ILI9341_COLOR565(255, 204, 0));
 			state = 0;
 			isTitleDisplayed = 0;
+
 		}
 	}
 }
@@ -487,7 +691,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+	HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -512,10 +716,7 @@ int main(void)
   HAL_TIM_Base_Start(&htim1);
   ILI9341_Init();
   ILI9341_FillScreen(ILI9341_COLOR565(255, 204, 0));
-  //HAL_UART_Transmit(&huart1, (uint8_t *)&HoChiMinh, sizeof(HoChiMinh),1000);
-  //HAL_UART_Transmit(&huart1, (uint8_t *)&Hue, sizeof(Hue),1000);
-  //HAL_UART_Transmit(&huart1, (uint8_t *)&HaNoi, sizeof(Hue),1000);
-  HAL_UART_Receive_IT(&huart1,(uint8_t*)&data_receive, sizeof(data_receive));
+  HAL_UART_Receive_IT(&huart1,(uint8_t *)&data_receive, sizeof(data_receive));
 
   /* USER CODE END 2 */
 
@@ -528,7 +729,7 @@ int main(void)
 	  }
 	  DisplayWeather();
 	  ReturnBack();
-	  HAL_Delay(1000);
+	  HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
